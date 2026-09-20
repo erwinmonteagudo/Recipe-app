@@ -1,12 +1,14 @@
 import { useState } from "react"
+import "./App.css"
 
 type Recipe = {
   id: number
   name: string
   cuisine: string | null
   protein: string | null
-  ingredients: string
-  instructions: string
+  image_url: string | null
+  ingredients: string[]
+  instructions: string[]
   favourite: boolean
 }
 
@@ -14,70 +16,289 @@ function App() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [showFavouritesOnly, setShowFavouritesOnly] = useState(false)
+
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedCuisine, setSelectedCuisine] = useState("")
+  const [selectedProtein, setSelectedProtein] = useState("")
 
   const [name, setName] = useState("")
   const [cuisine, setCuisine] = useState("")
   const [protein, setProtein] = useState("")
+  const [imageUrl, setImageUrl] = useState("")
   const [ingredients, setIngredients] = useState("")
   const [instructions, setInstructions] = useState("")
 
   async function loadRecipes() {
-    const response = await fetch("http://127.0.0.1:8000/recipes")
-    const data = await response.json()
+    try {
+      const response = await fetch("http://127.0.0.1:8000/recipes")
 
-    setRecipes(data)
+      if (!response.ok) {
+        throw new Error("Failed to load recipes")
+      }
+
+      const data: Recipe[] = await response.json()
+
+      setRecipes(data)
+      setSelectedRecipe(null)
+      setShowAddForm(false)
+      setEditingRecipe(null)
+    } catch (error) {
+      console.error(error)
+      alert("Could not load recipes from the backend")
+    }
+  }
+
+  function resetForm() {
+    setName("")
+    setCuisine("")
+    setProtein("")
+    setImageUrl("")
+    setIngredients("")
+    setInstructions("")
+    setEditingRecipe(null)
+  }
+
+  function openAddRecipeForm() {
+    resetForm()
     setSelectedRecipe(null)
-    setShowAddForm(false)
+    setShowAddForm(true)
   }
 
-  async function pickRandomRecipe() {
-  const response = await fetch("http://127.0.0.1:8000/recipes")
-  const data: Recipe[] = await response.json()
+  function startEditing(recipe: Recipe) {
+    setEditingRecipe(recipe)
 
-  if (data.length === 0) {
-    alert("You don't have any recipes yet")
-    return
+    setName(recipe.name)
+    setCuisine(recipe.cuisine ?? "")
+    setProtein(recipe.protein ?? "")
+    setImageUrl(recipe.image_url ?? "")
+    setIngredients(recipe.ingredients.join("\n"))
+    setInstructions(recipe.instructions.join("\n"))
+
+    setSelectedRecipe(null)
+    setShowAddForm(true)
   }
-
-  const randomIndex = Math.floor(Math.random() * data.length)
-  const randomRecipe = data[randomIndex]
-
-  setRecipes(data)
-  setSelectedRecipe(randomRecipe)
-  setShowAddForm(false)
-}
 
   async function addRecipe(event: React.FormEvent) {
     event.preventDefault()
 
-    const response = await fetch("http://127.0.0.1:8000/recipes", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        cuisine,
-        protein,
-        ingredients,
-        instructions,
-        favourite: false,
-      }),
-    })
+    const recipeData = {
+      name,
+      cuisine,
+      protein,
+      image_url: imageUrl || null,
 
-    if (!response.ok) {
-      alert("Something went wrong when adding the recipe")
+      ingredients: ingredients
+        .split("\n")
+        .map((item) => item.trim())
+        .filter((item) => item !== ""),
+
+      instructions: instructions
+        .split("\n")
+        .map((item) => item.trim())
+        .filter((item) => item !== ""),
+
+      favourite: editingRecipe?.favourite ?? false,
+    }
+
+    const url = editingRecipe
+      ? `http://127.0.0.1:8000/recipes/${editingRecipe.id}`
+      : "http://127.0.0.1:8000/recipes"
+
+    const method = editingRecipe ? "PUT" : "POST"
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(recipeData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+
+        alert(
+          "Failed to save recipe: " +
+            JSON.stringify(errorData)
+        )
+
+        return
+      }
+
+      resetForm()
+      await loadRecipes()
+    } catch (error) {
+      console.error(error)
+      alert("Could not connect to the backend")
+    }
+  }
+
+  async function deleteRecipe(recipeId: number) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this recipe?"
+    )
+
+    if (!confirmed) {
       return
     }
 
-    setName("")
-    setCuisine("")
-    setProtein("")
-    setIngredients("")
-    setInstructions("")
-    setShowAddForm(false)
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/recipes/${recipeId}`,
+        {
+          method: "DELETE",
+        }
+      )
 
-    await loadRecipes()
+      if (!response.ok) {
+        const errorData = await response.json()
+
+        alert(
+          "Failed to delete recipe: " +
+            JSON.stringify(errorData)
+        )
+
+        return
+      }
+
+      setSelectedRecipe(null)
+      await loadRecipes()
+    } catch (error) {
+      console.error(error)
+      alert("Could not connect to the backend")
+    }
+  }
+
+  async function toggleFavourite(recipe: Recipe) {
+    const updatedRecipe = {
+      name: recipe.name,
+      cuisine: recipe.cuisine,
+      protein: recipe.protein,
+      image_url: recipe.image_url,
+      ingredients: recipe.ingredients,
+      instructions: recipe.instructions,
+      favourite: !recipe.favourite,
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/recipes/${recipe.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updatedRecipe),
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to update favourite")
+      }
+
+      const updatedData: Recipe = await response.json()
+
+      setSelectedRecipe(updatedData)
+
+      setRecipes((currentRecipes) =>
+        currentRecipes.map((item) =>
+          item.id === updatedData.id
+            ? updatedData
+            : item
+        )
+      )
+    } catch (error) {
+      console.error(error)
+      alert("Could not update favourite")
+    }
+  }
+
+  async function pickRandomRecipe() {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/recipes")
+
+      if (!response.ok) {
+        throw new Error("Failed to load recipes")
+      }
+
+      const data: Recipe[] = await response.json()
+
+      if (data.length === 0) {
+        alert("You don't have any recipes yet")
+        return
+      }
+
+      const randomIndex = Math.floor(
+        Math.random() * data.length
+      )
+
+      setRecipes(data)
+      setSelectedRecipe(data[randomIndex])
+      setShowAddForm(false)
+      setEditingRecipe(null)
+    } catch (error) {
+      console.error(error)
+      alert("Could not load recipes")
+    }
+  }
+
+  const cuisineOptions = Array.from(
+    new Set(
+      recipes
+        .map((recipe) => recipe.cuisine)
+        .filter(
+          (value): value is string =>
+            Boolean(value) &&
+            value !== null &&
+            value.toLowerCase() !== "asian"
+        )
+    )
+  ).sort()
+
+  const proteinOptions = Array.from(
+    new Set(
+      recipes
+        .map((recipe) => recipe.protein)
+        .filter((value): value is string => Boolean(value))
+    )
+  ).sort()
+
+  const visibleRecipes = recipes.filter((recipe) => {
+    const search = searchTerm.toLowerCase().trim()
+
+    const matchesSearch =
+      search === "" ||
+      recipe.name.toLowerCase().includes(search) ||
+      (recipe.protein?.toLowerCase().includes(search) ?? false) ||
+      (recipe.cuisine?.toLowerCase().includes(search) ?? false)
+
+    const matchesCuisine =
+      selectedCuisine === "" ||
+      recipe.cuisine === selectedCuisine
+
+    const matchesProtein =
+      selectedProtein === "" ||
+      recipe.protein === selectedProtein
+
+    const matchesFavourite =
+      !showFavouritesOnly || recipe.favourite
+
+    return (
+      matchesSearch &&
+      matchesCuisine &&
+      matchesProtein &&
+      matchesFavourite
+    )
+  })
+
+  function clearFilters() {
+    setSearchTerm("")
+    setSelectedCuisine("")
+    setSelectedProtein("")
+    setShowFavouritesOnly(false)
   }
 
   return (
@@ -93,26 +314,100 @@ function App() {
           View All Recipes
         </button>
 
-        <button
-          onClick={() => {
-            setShowAddForm(true)
-            setSelectedRecipe(null)
-          }}
-        >
+        <button onClick={openAddRecipeForm}>
           Add Recipe
+        </button>
+
+        <button
+          onClick={() =>
+            setShowFavouritesOnly(
+              (currentValue) => !currentValue
+            )
+          }
+        >
+          {showFavouritesOnly
+            ? "Show All Recipes"
+            : "Show Favourites"}
         </button>
       </div>
 
+      {!showAddForm && !selectedRecipe && recipes.length > 0 && (
+        <section className="filters">
+          <input
+            className="search-input"
+            type="text"
+            placeholder="Search recipes..."
+            value={searchTerm}
+            onChange={(event) =>
+              setSearchTerm(event.target.value)
+            }
+          />
+
+          <div className="filter-row">
+            <select
+              value={selectedCuisine}
+              onChange={(event) =>
+                setSelectedCuisine(event.target.value)
+              }
+            >
+              <option value="">All cuisines</option>
+
+              {cuisineOptions.map((cuisineOption) => (
+                <option
+                  key={cuisineOption}
+                  value={cuisineOption}
+                >
+                  {cuisineOption}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedProtein}
+              onChange={(event) =>
+                setSelectedProtein(event.target.value)
+              }
+            >
+              <option value="">All proteins</option>
+
+              {proteinOptions.map((proteinOption) => (
+                <option
+                  key={proteinOption}
+                  value={proteinOption}
+                >
+                  {proteinOption}
+                </option>
+              ))}
+            </select>
+
+            <button onClick={clearFilters}>
+              Clear Filters
+            </button>
+          </div>
+
+          <p className="recipe-count">
+            {visibleRecipes.length} recipe
+            {visibleRecipes.length !== 1 ? "s" : ""} found
+          </p>
+        </section>
+      )}
+
       {showAddForm ? (
         <section className="add-recipe-form">
-          <h2>Add Recipe</h2>
+          <h2>
+            {editingRecipe
+              ? "Edit Recipe"
+              : "Add Recipe"}
+          </h2>
 
           <form onSubmit={addRecipe}>
             <label>
               Recipe Name
               <input
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) =>
+                  setName(event.target.value)
+                }
                 required
               />
             </label>
@@ -121,7 +416,9 @@ function App() {
               Cuisine
               <input
                 value={cuisine}
-                onChange={(event) => setCuisine(event.target.value)}
+                onChange={(event) =>
+                  setCuisine(event.target.value)
+                }
               />
             </label>
 
@@ -129,35 +426,57 @@ function App() {
               Protein
               <input
                 value={protein}
-                onChange={(event) => setProtein(event.target.value)}
+                onChange={(event) =>
+                  setProtein(event.target.value)
+                }
               />
             </label>
 
             <label>
-              Ingredients
+              Image URL
+              <input
+                value={imageUrl}
+                onChange={(event) =>
+                  setImageUrl(event.target.value)
+                }
+                placeholder="https://..."
+              />
+            </label>
+
+            <label>
+              Ingredients — one per line
               <textarea
                 value={ingredients}
-                onChange={(event) => setIngredients(event.target.value)}
+                onChange={(event) =>
+                  setIngredients(event.target.value)
+                }
                 required
               />
             </label>
 
             <label>
-              Instructions
+              Instructions — one step per line
               <textarea
                 value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
+                onChange={(event) =>
+                  setInstructions(event.target.value)
+                }
                 required
               />
             </label>
 
             <button type="submit">
-              Save Recipe
+              {editingRecipe
+                ? "Update Recipe"
+                : "Save Recipe"}
             </button>
 
             <button
               type="button"
-              onClick={() => setShowAddForm(false)}
+              onClick={() => {
+                resetForm()
+                setShowAddForm(false)
+              }}
             >
               Cancel
             </button>
@@ -165,35 +484,118 @@ function App() {
         </section>
       ) : selectedRecipe ? (
         <section className="recipe-details">
-          <button onClick={() => setSelectedRecipe(null)}>
+          <button
+            onClick={() =>
+              setSelectedRecipe(null)
+            }
+          >
             ← Back
           </button>
 
-          <h2>{selectedRecipe.name}</h2>
+          <button
+            onClick={() =>
+              startEditing(selectedRecipe)
+            }
+          >
+            Edit Recipe
+          </button>
+
+          <button
+            onClick={() =>
+              deleteRecipe(selectedRecipe.id)
+            }
+          >
+            Delete Recipe
+          </button>
+
+          <button
+            onClick={() =>
+              toggleFavourite(selectedRecipe)
+            }
+          >
+            {selectedRecipe.favourite
+              ? "★ Remove Favourite"
+              : "☆ Add to Favourites"}
+          </button>
+
+          {selectedRecipe.image_url && (
+            <img
+              className="recipe-detail-image"
+              src={selectedRecipe.image_url}
+              alt={selectedRecipe.name}
+            />
+          )}
+
+          <h2>
+            {selectedRecipe.favourite
+              ? "★ "
+              : ""}
+            {selectedRecipe.name}
+          </h2>
 
           <p>
-            {selectedRecipe.cuisine} • {selectedRecipe.protein}
+            {selectedRecipe.cuisine} •{" "}
+            {selectedRecipe.protein}
           </p>
 
           <h3>Ingredients</h3>
-          <p>{selectedRecipe.ingredients}</p>
+
+          <ul>
+            {selectedRecipe.ingredients.map(
+              (ingredient, index) => (
+                <li key={index}>
+                  {ingredient}
+                </li>
+              )
+            )}
+          </ul>
 
           <h3>Instructions</h3>
-          <p>{selectedRecipe.instructions}</p>
+
+          <ol>
+            {selectedRecipe.instructions.map(
+              (instruction, index) => (
+                <li key={index}>
+                  {instruction}
+                </li>
+              )
+            )}
+          </ol>
         </section>
       ) : (
         <section className="recipe-list">
-          {recipes.map((recipe) => (
-            <button
-              className="recipe-card"
-              key={recipe.id}
-              onClick={() => setSelectedRecipe(recipe)}
-            >
-              <h2>{recipe.name}</h2>
-              <p>{recipe.cuisine}</p>
-              <p>{recipe.protein}</p>
-            </button>
-          ))}
+          {visibleRecipes.length > 0 ? (
+            visibleRecipes.map((recipe) => (
+              <button
+                className="recipe-card"
+                key={recipe.id}
+                onClick={() =>
+                  setSelectedRecipe(recipe)
+                }
+              >
+                {recipe.image_url && (
+                  <img
+                    className="recipe-card-image"
+                    src={recipe.image_url}
+                    alt={recipe.name}
+                  />
+                )}
+
+                <div>
+                  <h2>
+                    {recipe.favourite ? "★ " : ""}
+                    {recipe.name}
+                  </h2>
+
+                  <p>
+                    {recipe.cuisine} • {recipe.protein}
+                  </p>
+                </div>
+              </button>
+            ))
+          ) : (
+            <p>No recipes found.</p>
+          )}
         </section>
       )}
     </main>

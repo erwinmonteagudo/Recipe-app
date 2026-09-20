@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+backend/.venv/
+
+# SQLite database
+backend/*.db
+
+# Node
+frontend/node_modules/
+
+# Vite build output
+frontend/dist/
+
+# Environment files
+.env
+.env.*

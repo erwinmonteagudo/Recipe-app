@@ -1,0 +1,69 @@
+#root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.menu-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+button {
+  padding: 16px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.recipe-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.recipe-card {
+  text-align: left;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  background: white;
+}
+
+.recipe-card h2 {
+  margin-top: 0;
+}
+
+.recipe-details {
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.add-recipe-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-recipe-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 18px;
+}
+
+.add-recipe-form input,
+.add-recipe-form textarea {
+  padding: 12px;
+  font-size: 16px;
+}
+
+.add-recipe-form textarea {
+  min-height: 120px;
+}

@@ -1,22 +1,28 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 import models
 import schemas
 from database import engine, SessionLocal
 
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def get_db():
     db = SessionLocal()
@@ -41,9 +47,10 @@ def create_recipe(
         name=recipe.name,
         cuisine=recipe.cuisine,
         protein=recipe.protein,
+        image_url=recipe.image_url,
         ingredients=recipe.ingredients,
         instructions=recipe.instructions,
-        favourite=recipe.favourite
+        favourite=recipe.favourite,
     )
 
     db.add(new_recipe)
@@ -76,6 +83,39 @@ def get_recipe(
         )
 
     return recipe
+
+
+@app.put("/recipes/{recipe_id}", response_model=schemas.RecipeResponse)
+def update_recipe(
+    recipe_id: int,
+    updated_recipe: schemas.RecipeCreate,
+    db: Session = Depends(get_db)
+):
+    recipe = (
+        db.query(models.Recipe)
+        .filter(models.Recipe.id == recipe_id)
+        .first()
+    )
+
+    if recipe is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Recipe not found"
+        )
+
+    recipe.name = updated_recipe.name
+    recipe.cuisine = updated_recipe.cuisine
+    recipe.protein = updated_recipe.protein
+    recipe.image_url = updated_recipe.image_url
+    recipe.ingredients = updated_recipe.ingredients
+    recipe.instructions = updated_recipe.instructions
+    recipe.favourite = updated_recipe.favourite
+
+    db.commit()
+    db.refresh(recipe)
+
+    return recipe
+
 
 @app.delete("/recipes/{recipe_id}")
 def delete_recipe(

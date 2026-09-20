@@ -5,8 +5,9 @@ class RecipeCreate(BaseModel):
     name: str
     cuisine: str | None = None
     protein: str | None = None
-    ingredients: str
-    instructions: str
+    image_url: str | None = None
+    ingredients: list[str]
+    instructions: list[str]
     favourite: bool = False
 
 

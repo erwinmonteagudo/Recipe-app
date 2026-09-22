@@ -1,6 +1,11 @@
 import { useState } from "react"
 import "./App.css"
 
+type InstructionStep = {
+  title: string
+  text: string
+}
+
 type Recipe = {
   id: number
   name: string
@@ -8,7 +13,7 @@ type Recipe = {
   protein: string | null
   image_url: string | null
   ingredients: string[]
-  instructions: string[]
+  instructions: InstructionStep[]
   favourite: boolean
 }
 
@@ -74,7 +79,16 @@ function App() {
     setProtein(recipe.protein ?? "")
     setImageUrl(recipe.image_url ?? "")
     setIngredients(recipe.ingredients.join("\n"))
-    setInstructions(recipe.instructions.join("\n"))
+
+    setInstructions(
+      recipe.instructions
+        .map((step) =>
+          step.title
+            ? `${step.title} | ${step.text}`
+            : step.text
+        )
+        .join("\n")
+    )
 
     setSelectedRecipe(null)
     setShowAddForm(true)
@@ -96,8 +110,23 @@ function App() {
 
       instructions: instructions
         .split("\n")
-        .map((item) => item.trim())
-        .filter((item) => item !== ""),
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .map((line) => {
+          const separatorIndex = line.indexOf("|")
+
+          if (separatorIndex === -1) {
+            return {
+              title: "",
+              text: line,
+            }
+          }
+
+          return {
+            title: line.slice(0, separatorIndex).trim(),
+            text: line.slice(separatorIndex + 1).trim(),
+          }
+        }),
 
       favourite: editingRecipe?.favourite ?? false,
     }
@@ -251,7 +280,6 @@ function App() {
         .map((recipe) => recipe.cuisine)
         .filter(
           (value): value is string =>
-            Boolean(value) &&
             value !== null &&
             value.toLowerCase() !== "asian"
         )
@@ -262,7 +290,10 @@ function App() {
     new Set(
       recipes
         .map((recipe) => recipe.protein)
-        .filter((value): value is string => Boolean(value))
+        .filter(
+          (value): value is string =>
+            value !== null
+        )
     )
   ).sort()
 
@@ -455,11 +486,14 @@ function App() {
             </label>
 
             <label>
-              Instructions — one step per line
+              Instructions — use Title | Instruction
               <textarea
                 value={instructions}
                 onChange={(event) =>
                   setInstructions(event.target.value)
+                }
+                placeholder={
+                  "Fry the onions | Heat the oil and fry until golden.\nCook the chicken | Season and cook until browned."
                 }
                 required
               />
@@ -556,7 +590,15 @@ function App() {
             {selectedRecipe.instructions.map(
               (instruction, index) => (
                 <li key={index}>
-                  {instruction}
+                  {instruction.title && (
+                    <strong>
+                      {instruction.title}
+                    </strong>
+                  )}
+
+                  {instruction.title && <br />}
+
+                  {instruction.text}
                 </li>
               )
             )}

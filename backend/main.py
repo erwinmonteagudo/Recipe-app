@@ -43,13 +43,18 @@ def create_recipe(
     recipe: schemas.RecipeCreate,
     db: Session = Depends(get_db)
 ):
+    instruction_data = [
+        instruction.model_dump()
+        for instruction in recipe.instructions
+    ]
+
     new_recipe = models.Recipe(
         name=recipe.name,
         cuisine=recipe.cuisine,
         protein=recipe.protein,
         image_url=recipe.image_url,
         ingredients=recipe.ingredients,
-        instructions=recipe.instructions,
+        instructions=instruction_data,
         favourite=recipe.favourite,
     )
 
@@ -58,6 +63,43 @@ def create_recipe(
     db.refresh(new_recipe)
 
     return new_recipe
+
+
+@app.post(
+    "/recipes/bulk",
+    response_model=list[schemas.RecipeResponse]
+)
+def create_recipes_bulk(
+    recipes: list[schemas.RecipeCreate],
+    db: Session = Depends(get_db)
+):
+    new_recipes = []
+
+    for recipe in recipes:
+        instruction_data = [
+            instruction.model_dump()
+            for instruction in recipe.instructions
+        ]
+
+        new_recipe = models.Recipe(
+            name=recipe.name,
+            cuisine=recipe.cuisine,
+            protein=recipe.protein,
+            image_url=recipe.image_url,
+            ingredients=recipe.ingredients,
+            instructions=instruction_data,
+            favourite=recipe.favourite,
+        )
+
+        db.add(new_recipe)
+        new_recipes.append(new_recipe)
+
+    db.commit()
+
+    for recipe in new_recipes:
+        db.refresh(recipe)
+
+    return new_recipes
 
 
 @app.get("/recipes", response_model=list[schemas.RecipeResponse])
@@ -103,12 +145,17 @@ def update_recipe(
             detail="Recipe not found"
         )
 
+    instruction_data = [
+        instruction.model_dump()
+        for instruction in updated_recipe.instructions
+    ]
+
     recipe.name = updated_recipe.name
     recipe.cuisine = updated_recipe.cuisine
     recipe.protein = updated_recipe.protein
     recipe.image_url = updated_recipe.image_url
     recipe.ingredients = updated_recipe.ingredients
-    recipe.instructions = updated_recipe.instructions
+    recipe.instructions = instruction_data
     recipe.favourite = updated_recipe.favourite
 
     db.commit()

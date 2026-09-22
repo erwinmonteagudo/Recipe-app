@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import "./App.css"
 
 type InstructionStep = {
@@ -17,12 +17,63 @@ type Recipe = {
   favourite: boolean
 }
 
+type RecipeImageProps = {
+  imageUrl: string | null
+  recipeName: string
+  className: string
+}
+
+function RecipeImage({
+  imageUrl,
+  recipeName,
+  className,
+}: RecipeImageProps) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [imageUrl])
+
+  if (!imageUrl || imageFailed) {
+    return (
+      <div className={`${className} recipe-image-fallback`}>
+        <span>🍽️</span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      className={className}
+      src={imageUrl}
+      alt={recipeName}
+      onError={() => setImageFailed(true)}
+    />
+  )
+}
+
 function App() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
   const [showFavouritesOnly, setShowFavouritesOnly] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  /*
+    Randomiser state.
+
+    randomSeenIds stores every recipe already shown during
+    the current random cycle.
+
+    lastRandomProtein stores the protein from the previous
+    random suggestion so we can avoid showing the same
+    protein consecutively whenever possible.
+  */
+  const [randomSeenIds, setRandomSeenIds] = useState<number[]>([])
+  const [lastRandomProtein, setLastRandomProtein] = useState<string | null>(
+    null
+  )
 
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCuisine, setSelectedCuisine] = useState("")
@@ -35,24 +86,71 @@ function App() {
   const [ingredients, setIngredients] = useState("")
   const [instructions, setInstructions] = useState("")
 
+  async function fetchRecipes() {
+    const response = await fetch("http://127.0.0.1:8000/recipes")
+
+    if (!response.ok) {
+      throw new Error("Failed to load recipes")
+    }
+
+    const data: Recipe[] = await response.json()
+
+    setRecipes(data)
+
+    return data
+  }
+
   async function loadRecipes() {
     try {
-      const response = await fetch("http://127.0.0.1:8000/recipes")
-
-      if (!response.ok) {
-        throw new Error("Failed to load recipes")
-      }
-
-      const data: Recipe[] = await response.json()
+      const data = await fetchRecipes()
 
       setRecipes(data)
       setSelectedRecipe(null)
       setShowAddForm(false)
       setEditingRecipe(null)
+
+      setSearchTerm("")
+      setSelectedCuisine("")
+      setSelectedProtein("")
+      setShowFavouritesOnly(false)
+
+      resetRandomCycle()
     } catch (error) {
       console.error(error)
       alert("Could not load recipes from the backend")
     }
+  }
+
+  useEffect(() => {
+    async function loadInitialRecipes() {
+      try {
+        await fetchRecipes()
+      } catch (error) {
+        console.error(error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadInitialRecipes()
+  }, [])
+
+  /*
+    Whenever the user changes a search/filter, start a new
+    random cycle because the eligible recipe pool has changed.
+  */
+  useEffect(() => {
+    resetRandomCycle()
+  }, [
+    searchTerm,
+    selectedCuisine,
+    selectedProtein,
+    showFavouritesOnly,
+  ])
+
+  function resetRandomCycle() {
+    setRandomSeenIds([])
+    setLastRandomProtein(null)
   }
 
   function resetForm() {
@@ -158,6 +256,8 @@ function App() {
       }
 
       resetForm()
+      resetRandomCycle()
+
       await loadRecipes()
     } catch (error) {
       console.error(error)
@@ -194,6 +294,8 @@ function App() {
       }
 
       setSelectedRecipe(null)
+      resetRandomCycle()
+
       await loadRecipes()
     } catch (error) {
       console.error(error)
@@ -242,35 +344,6 @@ function App() {
     } catch (error) {
       console.error(error)
       alert("Could not update favourite")
-    }
-  }
-
-  async function pickRandomRecipe() {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/recipes")
-
-      if (!response.ok) {
-        throw new Error("Failed to load recipes")
-      }
-
-      const data: Recipe[] = await response.json()
-
-      if (data.length === 0) {
-        alert("You don't have any recipes yet")
-        return
-      }
-
-      const randomIndex = Math.floor(
-        Math.random() * data.length
-      )
-
-      setRecipes(data)
-      setSelectedRecipe(data[randomIndex])
-      setShowAddForm(false)
-      setEditingRecipe(null)
-    } catch (error) {
-      console.error(error)
-      alert("Could not load recipes")
     }
   }
 
@@ -324,6 +397,101 @@ function App() {
       matchesFavourite
     )
   })
+
+  function pickRandomRecipe() {
+    if (visibleRecipes.length === 0) {
+      alert("No recipes match your current filters.")
+      return
+    }
+
+    /*
+      First get recipes that have NOT been shown during
+      the current cycle.
+    */
+    let unseenRecipes = visibleRecipes.filter(
+      (recipe) => !randomSeenIds.includes(recipe.id)
+    )
+
+    /*
+      If every eligible recipe has been shown, the cycle
+      is complete.
+
+      Start a fresh cycle.
+    */
+    let nextSeenIds = randomSeenIds
+
+    if (unseenRecipes.length === 0) {
+      unseenRecipes = [...visibleRecipes]
+      nextSeenIds = []
+    }
+
+    /*
+      Try to avoid the same protein appearing twice
+      consecutively.
+
+      For example:
+
+      Chicken
+      Beef
+      Pork
+      Chicken
+
+      rather than:
+
+      Chicken
+      Chicken
+      Chicken
+
+      If the user has filtered specifically to Beef,
+      obviously every result can still be Beef.
+
+      Likewise, if there genuinely isn't another protein
+      available, we allow the repeat rather than getting stuck.
+    */
+    let candidateRecipes = unseenRecipes
+
+    if (lastRandomProtein !== null) {
+      const differentProteinRecipes = unseenRecipes.filter(
+        (recipe) =>
+          recipe.protein !== lastRandomProtein
+      )
+
+      if (differentProteinRecipes.length > 0) {
+        candidateRecipes = differentProteinRecipes
+      }
+    }
+
+    /*
+      Pick randomly ONLY from the currently valid candidates.
+    */
+    const randomIndex = Math.floor(
+      Math.random() * candidateRecipes.length
+    )
+
+    const randomRecipe = candidateRecipes[randomIndex]
+
+    /*
+      Mark this recipe as seen in the current cycle.
+    */
+    setRandomSeenIds([
+      ...nextSeenIds,
+      randomRecipe.id,
+    ])
+
+    /*
+      Remember its protein for the next randomisation.
+    */
+    setLastRandomProtein(
+      randomRecipe.protein ?? null
+    )
+
+    /*
+      Show the chosen recipe.
+    */
+    setSelectedRecipe(randomRecipe)
+    setShowAddForm(false)
+    setEditingRecipe(null)
+  }
 
   function clearFilters() {
     setSearchTerm("")
@@ -552,18 +720,14 @@ function App() {
               : "☆ Add to Favourites"}
           </button>
 
-          {selectedRecipe.image_url && (
-            <img
-              className="recipe-detail-image"
-              src={selectedRecipe.image_url}
-              alt={selectedRecipe.name}
-            />
-          )}
+          <RecipeImage
+            imageUrl={selectedRecipe.image_url}
+            recipeName={selectedRecipe.name}
+            className="recipe-detail-image"
+          />
 
           <h2>
-            {selectedRecipe.favourite
-              ? "★ "
-              : ""}
+            {selectedRecipe.favourite ? "★ " : ""}
             {selectedRecipe.name}
           </h2>
 
@@ -606,7 +770,9 @@ function App() {
         </section>
       ) : (
         <section className="recipe-list">
-          {visibleRecipes.length > 0 ? (
+          {isLoading ? (
+            <p>Loading recipes...</p>
+          ) : visibleRecipes.length > 0 ? (
             visibleRecipes.map((recipe) => (
               <button
                 className="recipe-card"
@@ -615,13 +781,11 @@ function App() {
                   setSelectedRecipe(recipe)
                 }
               >
-                {recipe.image_url && (
-                  <img
-                    className="recipe-card-image"
-                    src={recipe.image_url}
-                    alt={recipe.name}
-                  />
-                )}
+                <RecipeImage
+                  imageUrl={recipe.image_url}
+                  recipeName={recipe.name}
+                  className="recipe-card-image"
+                />
 
                 <div>
                   <h2>
@@ -635,6 +799,10 @@ function App() {
                 </div>
               </button>
             ))
+          ) : showFavouritesOnly ? (
+            <p>
+              No favourite recipes match your filters.
+            </p>
           ) : (
             <p>No recipes found.</p>
           )}

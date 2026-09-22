@@ -260,3 +260,23 @@ button:active {
   margin-top: 20px;
   margin-bottom: 10px;
 }
+
+.recipe-image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f8e8ef;
+  color: #9f6f84;
+
+  border: 1px solid #eedce4;
+}
+
+.recipe-card-image.recipe-image-fallback {
+  font-size: 32px;
+}
+
+.recipe-detail-image.recipe-image-fallback {
+  min-height: 260px;
+  font-size: 64px;
+}
